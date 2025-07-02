@@ -98,12 +98,9 @@ public class WolfAi {
     public static final Collection<? extends SensorType<? extends Sensor<? super Wolf>>> SENSOR_TYPES = ImmutableList.of(
             ABABSensorTypes.ANIMAL_TEMPTATIONS.get(),
             SensorType.HURT_BY,
-
-            // dependent on NEAREST_VISIBLE_LIVING_ENTITIES
             SensorType.NEAREST_LIVING_ENTITIES,
             SensorType.NEAREST_ADULT,
             ABABSensorTypes.NEAREST_ALLIES.get(),
-
             SensorType.NEAREST_ITEMS,
             SensorType.NEAREST_PLAYERS,
             ABABSensorTypes.WOLF_SPECIFIC_SENSOR.get(),
@@ -150,7 +147,7 @@ public class WolfAi {
     public static InteractionResult mobInteract(Wolf wolf, Player player, InteractionHand hand) {
         ItemStack itemInHand = player.getItemInHand(hand);
         Item item = itemInHand.getItem();
-        if (wolf.level.isClientSide) {
+        if (wolf.level().isClientSide) {
             boolean interact = wolf.isOwnedBy(player) && wolf.isTame() || itemInHand.is(ABABTags.WOLF_LOVED) && !wolf.isTame() && !wolf.isAngry();
             return interact ? InteractionResult.SUCCESS : InteractionResult.PASS;
         } else {
@@ -162,7 +159,6 @@ public class WolfAi {
                     if (!(item instanceof DyeItem dyeItem)) {
                         InteractionResult animalInteractionResult = AnimalAccess.cast(wolf).animalInteract(player, hand);
                         if(animalInteractionResult.consumesAction()){
-                            // Might have weird behavior if the count actually matters for a modded item's nutrition
                             AiUtil.animalEat(wolf, itemInHand);
                         }
                         boolean willNotBreed = !animalInteractionResult.consumesAction();
@@ -177,7 +173,6 @@ public class WolfAi {
                     if (dyeColor != wolf.getCollarColor()) {
                         wolf.setCollarColor(dyeColor);
                         AnimalAccess.cast(wolf).takeItemFromPlayer(player, hand, itemInHand);
-
                         return InteractionResult.SUCCESS;
                     }
                 }
@@ -193,6 +188,12 @@ public class WolfAi {
                     updateTrust(wolf, player);
                     return InteractionResult.CONSUME;
                 }
+            } else {
+                // Trigger aggression only if player attacks wolf and is in attack range
+                if (wolf.getBrain().getMemory(MemoryModuleType.HURT_BY_ENTITY).map(entity -> entity == player).orElse(false)
+                        && player.closerThan(wolf, 3.0)) {
+                    SharedWolfAi.reactToAttack(wolf, player);
+                }
             }
 
             return AnimalAccess.cast(wolf).animalInteract(player, hand);
@@ -204,10 +205,10 @@ public class WolfAi {
         int trust = TrustAi.getTrust(wolf);
         int maxTrust = ABABConfig.wolfMaxTrust.get();
         if(maxTrust > 0 && maxTrust <= trust && !ForgeEventFactory.onAnimalTame(wolf, player)){
-            wolf.level.broadcastEntityEvent(wolf, SharedWolfAi.SUCCESSFUL_TAME_ID);
+            wolf.level().broadcastEntityEvent(wolf, SharedWolfAi.SUCCESSFUL_TAME_ID);
             SharedWolfAi.tame(wolf, player);
         } else{
-            wolf.level.broadcastEntityEvent(wolf, SharedWolfAi.FAILED_TAME_ID);
+            wolf.level().broadcastEntityEvent(wolf, SharedWolfAi.FAILED_TAME_ID);
         }
     }
 
@@ -220,9 +221,23 @@ public class WolfAi {
     }
 
     public static boolean isTargetablePlayerNotSneaking(Wolf wolf, Player player) {
-        return !isTrusting(wolf)
+        if (isTrusting(wolf)) {
+            return false;
+        }
+        // Check if player is the owner of a tamed wolf in the pack
+        boolean isPackOwner = GenericAi.getNearbyAdults(wolf).stream()
+                .filter(w -> w.isTame() && w.isOwnedBy(player))
+                .findAny()
+                .isPresent();
+        if (isPackOwner) {
+            return false;
+        }
+        boolean isNight = !wolf.getBrain().hasMemoryValue(ABABMemoryModuleTypes.IS_LEVEL_DAY.get());
+        boolean isInAttackRange = player.closerThan(wolf, 3.0);
+        boolean isCrouchingWithTemptingItem = player.isDiscrete() && (player.getMainHandItem().is(ABABTags.WOLF_LOVED) || player.getMainHandItem().is(ABABTags.WOLF_FOOD));
+        boolean hasPack = !GenericAi.getNearbyAdults(wolf).isEmpty();
+        return isInAttackRange && (isNight || (hasPack && !player.isDiscrete()) || (!hasPack && !isCrouchingWithTemptingItem))
                 && AiUtil.isAttackable(wolf, player, true)
-                && AiUtil.isNotCreativeOrSpectator(player)
-                && !player.isDiscrete();
+                && AiUtil.isNotCreativeOrSpectator(player);
     }
 }
