@@ -140,7 +140,7 @@ public class ABABMemoryModuleTypes {
             "is_following",
             () -> new MemoryModuleType<>(Optional.empty()));
 
-    public static RegistryObject<MemoryModuleType<Player>>  NEAREST_TARGETABLE_PLAYER_NOT_SNEAKING = MEMORY_MODULE_TYPES.register(
+    public static RegistryObject<MemoryModuleType<Player>> NEAREST_TARGETABLE_PLAYER_NOT_SNEAKING = MEMORY_MODULE_TYPES.register(
             "nearest_targetable_player_not_sneaking",
             () -> new MemoryModuleType<>(Optional.empty()));
 
@@ -148,4 +148,7 @@ public class ABABMemoryModuleTypes {
             "hunt_target",
             () -> new MemoryModuleType<>(Optional.empty()));
 
+    public static RegistryObject<MemoryModuleType<Boolean>> IS_FLEEING = MEMORY_MODULE_TYPES.register(
+            "is_fleeing",
+            () -> new MemoryModuleType<>(Optional.of(Codec.BOOL)));
 }
